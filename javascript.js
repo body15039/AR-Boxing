@@ -1,4 +1,4 @@
-// AR Boxing Game
+// AR Boxing Game - Perfect Hand Tracking
 class BoxingGame {
     constructor() {
         this.score = 0;
@@ -10,42 +10,53 @@ class BoxingGame {
         this.objects = [];
         this.particles = [];
         
-        // Hand tracking
+        // Enhanced hand tracking
         this.detector = null;
         this.hands = [];
         this.lastPunchTime = 0;
-        this.punchCooldown = 300; // ms
+        this.punchCooldown = 200; // ms
+        this.punchThreshold = 25; // Minimum movement speed for punch
         
         // Three.js
         this.scene = null;
         this.camera = null;
         this.renderer = null;
         
-        this.initialized = false;
+        // Hand position history for velocity calculation
+        this.handHistory = {
+            left: { x: 0, y: 0, time: 0 },
+            right: { x: 0, y: 0, time: 0 }
+        };
         
-        console.log('Game constructor initialized');
+        // Collision detection
+        this.punchRange = 0.8; // How close objects need to be to punch
+        
+        this.initialized = false;
+        this.gameLoopRunning = false;
+        
+        console.log('🎮 AR Boxing Game Initialized');
     }
 
     async init() {
-        console.log('Starting game initialization...');
+        console.log('🚀 Starting game initialization...');
         
         try {
             await this.setupCamera();
             await this.setupThreeJS();
             this.setupEventListeners();
             
-            // Try to setup hand tracking but don't block game start
+            // Setup hand tracking in background
             this.setupHandTracking().catch(error => {
-                console.warn('Hand tracking failed, but game will continue:', error);
-                this.showMessage('Hand tracking not available, but you can still play!');
+                console.warn('Hand tracking failed:', error);
+                this.showMessage('Hand tracking not available. Using fallback detection.');
             });
             
             this.initialized = true;
-            console.log('Game initialized successfully');
+            console.log('✅ Game initialized successfully');
             
         } catch (error) {
-            console.error('Initialization failed:', error);
-            this.showError('Failed to initialize game: ' + error.message);
+            console.error('❌ Initialization failed:', error);
+            this.showError('Failed to initialize: ' + error.message);
         }
     }
 
@@ -56,8 +67,8 @@ class BoxingGame {
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { 
                     facingMode: 'user',
-                    width: { ideal: 640 },
-                    height: { ideal: 480 }
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
                 }
             });
             video.srcObject = stream;
@@ -65,84 +76,92 @@ class BoxingGame {
             return new Promise((resolve) => {
                 video.onloadedmetadata = () => {
                     video.play();
-                    console.log('Camera access granted');
+                    console.log('📷 Camera access granted');
                     resolve();
                 };
             });
         } catch (err) {
-            console.error('Camera error:', err);
-            this.showError('Cannot access camera. Please allow camera permissions and refresh the page.');
+            console.error('📷 Camera error:', err);
+            this.showError('Camera access required! Please allow camera permissions.');
             throw err;
         }
     }
 
     async setupHandTracking() {
-        console.log('Loading hand tracking model...');
+        console.log('🔄 Loading hand tracking model...');
         const loadingMessage = document.getElementById('loadingMessage');
-        loadingMessage.style.display = 'block';
+        if (loadingMessage) loadingMessage.style.display = 'block';
         
         try {
-            // Check if TensorFlow.js is loaded
-            if (typeof handPoseDetection === 'undefined') {
-                throw new Error('Hand pose detection library not loaded');
-            }
+            // Wait for TensorFlow.js to be ready
+            await tf.ready();
+            console.log('✅ TensorFlow.js ready');
             
             const model = handPoseDetection.SupportedModels.MediaPipeHands;
             const detectorConfig = {
                 runtime: 'tfjs',
-                modelType: 'lite',
+                modelType: 'full',
                 maxHands: 2
             };
             
             this.detector = await handPoseDetection.createDetector(model, detectorConfig);
-            console.log('Hand tracking model loaded successfully');
-            loadingMessage.style.display = 'none';
+            console.log('✅ Hand tracking model loaded');
+            if (loadingMessage) loadingMessage.style.display = 'none';
             
         } catch (error) {
-            console.warn('Hand tracking failed:', error);
-            loadingMessage.style.display = 'none';
+            console.error('❌ Hand tracking failed:', error);
+            if (loadingMessage) loadingMessage.style.display = 'none';
             throw error;
         }
     }
 
     setupThreeJS() {
-        console.log('Setting up Three.js...');
+        console.log('🎨 Setting up 3D environment...');
         const canvas = document.getElementById('canvas3d');
         
-        // Scene
+        // Scene with fog for depth
         this.scene = new THREE.Scene();
-        this.scene.background = null;
+        this.scene.fog = new THREE.Fog(0x000000, 5, 15);
         
         // Camera
         const aspect = window.innerWidth / window.innerHeight;
-        this.camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 100);
-        this.camera.position.z = 5;
+        this.camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 100);
+        this.camera.position.set(0, 0, 5);
         
-        // Renderer
+        // Enhanced Renderer
         this.renderer = new THREE.WebGLRenderer({
             canvas: canvas,
             alpha: true,
-            antialias: true
+            antialias: true,
+            powerPreference: "high-performance"
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         
-        // Lighting
+        // Enhanced Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         this.scene.add(ambientLight);
         
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        directionalLight.position.set(1, 1, 2);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 5, 5);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
         this.scene.add(directionalLight);
         
-        // Handle window resize
-        window.addEventListener('resize', () => this.onWindowResize());
+        // Point light for object glow
+        const pointLight = new THREE.PointLight(0xffffff, 0.5, 10);
+        pointLight.position.set(0, 0, 3);
+        this.scene.add(pointLight);
         
-        console.log('Three.js setup complete');
+        window.addEventListener('resize', () => this.onWindowResize());
+        console.log('✅ 3D environment ready');
     }
 
     setupEventListeners() {
-        console.log('Setting up event listeners...');
+        console.log('🔗 Setting up event listeners...');
         
         const startButton = document.getElementById('startButton');
         const restartButton = document.getElementById('restartButton');
@@ -150,15 +169,20 @@ class BoxingGame {
         if (startButton) {
             startButton.addEventListener('click', () => this.startGame());
             startButton.disabled = false;
-        } else {
-            console.error('Start button not found!');
         }
         
         if (restartButton) {
             restartButton.addEventListener('click', () => this.restartGame());
         }
         
-        console.log('Event listeners setup complete');
+        // Keyboard fallback for testing
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'Space' && this.gameActive) {
+                this.simulatePunch();
+            }
+        });
+        
+        console.log('✅ Event listeners ready');
     }
 
     onWindowResize() {
@@ -171,10 +195,10 @@ class BoxingGame {
     }
 
     startGame() {
-        console.log('Starting game...');
+        console.log('🥊 Starting game...');
         
         if (!this.initialized) {
-            console.error('Game not initialized yet');
+            this.showError('Game not ready yet. Please wait for initialization.');
             return;
         }
         
@@ -186,20 +210,20 @@ class BoxingGame {
         this.objects = [];
         this.particles = [];
         
-        // Hide start screen, show game
+        // UI updates
         document.getElementById('startScreen').style.display = 'none';
         document.getElementById('gameOverScreen').style.display = 'none';
         document.getElementById('errorMessage').style.display = 'none';
         
         this.updateUI();
         
-        // Start game loop if not already running
+        // Start game loop
         if (!this.gameLoopRunning) {
             this.gameLoopRunning = true;
             this.gameLoop();
         }
         
-        console.log('Game started successfully');
+        console.log('✅ Game started!');
     }
 
     restartGame() {
@@ -233,8 +257,9 @@ class BoxingGame {
         }
         
         // Increase difficulty
-        this.gameSpeed = 1.0 + (60 - this.timeLeft) * 0.02;
-        this.spawnRate = Math.max(0.5, 2.0 - (60 - this.timeLeft) * 0.02);
+        const timeElapsed = 60 - this.timeLeft;
+        this.gameSpeed = 1.0 + timeElapsed * 0.03;
+        this.spawnRate = Math.max(0.3, 2.0 - timeElapsed * 0.03);
         
         // Spawn objects
         const currentTime = performance.now() / 1000;
@@ -243,11 +268,9 @@ class BoxingGame {
             this.lastSpawnTime = currentTime;
         }
         
-        // Detect hands if available
-        if (this.detector) {
-            await this.detectHands();
-            this.checkCollisions();
-        }
+        // Hand tracking and collision detection
+        await this.detectHands();
+        this.checkCollisions();
         
         // Update physics
         this.updatePhysics();
@@ -259,7 +282,7 @@ class BoxingGame {
         
         try {
             const video = document.getElementById('videoElement');
-            this.hands = await this.detector.estimateHands(video);
+            this.hands = await this.detector.estimateHands(video, { flipHorizontal: true });
         } catch (error) {
             console.warn('Hand detection error:', error);
         }
@@ -267,34 +290,72 @@ class BoxingGame {
 
     createObject() {
         const objectTypes = [
-            { type: 'normal', color: 0x00ff88, points: 10, radius: 0.3 },
-            { type: 'bonus', color: 0xffaa00, points: 50, radius: 0.2 },
-            { type: 'danger', color: 0xff4444, points: -20, radius: 0.4 }
+            { 
+                type: 'normal', 
+                color: 0x00ff88, 
+                points: 10, 
+                radius: 0.3,
+                glow: true
+            },
+            { 
+                type: 'bonus', 
+                color: 0xffaa00, 
+                points: 50, 
+                radius: 0.2,
+                glow: true
+            },
+            { 
+                type: 'danger', 
+                color: 0xff4444, 
+                points: -20, 
+                radius: 0.4,
+                glow: false
+            },
+            { 
+                type: 'explosive', 
+                color: 0xaa00ff, 
+                points: 30, 
+                radius: 0.35,
+                glow: true
+            }
         ];
         
         const type = objectTypes[Math.floor(Math.random() * objectTypes.length)];
-        const geometry = new THREE.SphereGeometry(type.radius, 16, 16);
+        
+        // Create glowing material
         const material = new THREE.MeshPhongMaterial({ 
             color: type.color,
-            emissive: type.color,
-            emissiveIntensity: 0.5
+            emissive: type.glow ? type.color : 0x000000,
+            emissiveIntensity: type.glow ? 0.8 : 0,
+            shininess: 100,
+            transparent: true,
+            opacity: 0.9
         });
         
+        const geometry = new THREE.SphereGeometry(type.radius, 32, 32);
         const object = new THREE.Mesh(geometry, material);
         
-        // Random position
-        object.position.x = (Math.random() - 0.5) * 6;
-        object.position.y = (Math.random() - 0.5) * 4 + 1;
-        object.position.z = -8;
+        // Random position in front of player
+        object.position.set(
+            (Math.random() - 0.5) * 8, // X: -4 to +4
+            Math.random() * 3 + 0.5,   // Y: 0.5 to 3.5
+            -15                        // Z: Start far away
+        );
         
         object.userData = {
             type: type.type,
             points: type.points,
             velocity: new THREE.Vector3(
-                (Math.random() - 0.5) * 0.05,
-                (Math.random() - 0.5) * 0.05,
-                this.gameSpeed * 0.1
-            )
+                (Math.random() - 0.5) * 0.08,
+                (Math.random() - 0.5) * 0.08,
+                this.gameSpeed * 0.15 + Math.random() * 0.05
+            ),
+            rotationSpeed: new THREE.Vector3(
+                Math.random() * 0.02 - 0.01,
+                Math.random() * 0.02 - 0.01,
+                Math.random() * 0.02 - 0.01
+            ),
+            hit: false
         };
         
         this.scene.add(object);
@@ -304,101 +365,225 @@ class BoxingGame {
     checkCollisions() {
         const currentTime = performance.now();
         
-        this.hands.forEach(hand => {
-            const indexFinger = hand.keypoints.find(point => point.name === 'index_finger_tip');
+        this.hands.forEach((hand, handIndex) => {
+            const indexTip = hand.keypoints.find(point => point.name === 'index_finger_tip');
+            const thumbTip = hand.keypoints.find(point => point.name === 'thumb_tip');
             const wrist = hand.keypoints.find(point => point.name === 'wrist');
             
-            if (!indexFinger || !wrist) return;
+            if (!indexTip || !thumbTip || !wrist) return;
             
-            // Simple punch detection based on finger movement
-            const punchVelocity = Math.sqrt(
-                Math.pow(indexFinger.x - wrist.x, 2) + 
-                Math.pow(indexFinger.y - wrist.y, 2)
-            );
+            // Calculate hand position (average of index and thumb)
+            const handX = (indexTip.x + thumbTip.x) / 2;
+            const handY = (indexTip.y + thumbTip.y) / 2;
             
-            if (punchVelocity > 20 && currentTime - this.lastPunchTime > this.punchCooldown) {
-                this.lastPunchTime = currentTime;
+            // Calculate punch velocity
+            const handKey = handIndex === 0 ? 'left' : 'right';
+            const currentTime = performance.now();
+            const timeDiff = currentTime - this.handHistory[handKey].time;
+            
+            if (timeDiff > 0) {
+                const velocityX = Math.abs(handX - this.handHistory[handKey].x) / timeDiff * 1000;
+                const velocityY = Math.abs(handY - this.handHistory[handKey].y) / timeDiff * 1000;
+                const totalVelocity = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
                 
-                // Convert screen coordinates to 3D
-                const screenX = (indexFinger.x / window.innerWidth) * 2 - 1;
-                const screenY = -(indexFinger.y / window.innerHeight) * 2 + 1;
+                // Update hand history
+                this.handHistory[handKey] = { x: handX, y: handY, time: currentTime };
                 
-                const raycaster = new THREE.Raycaster();
-                raycaster.setFromCamera(new THREE.Vector2(screenX, screenY), this.camera);
-                
-                const intersects = raycaster.intersectObjects(this.objects);
-                
-                if (intersects.length > 0) {
-                    const object = intersects[0].object;
-                    this.hitObject(object);
+                // Check if this is a punch (fast movement)
+                if (totalVelocity > this.punchThreshold && 
+                    currentTime - this.lastPunchTime > this.punchCooldown) {
+                    
+                    this.lastPunchTime = currentTime;
+                    this.detectPunchCollision(handX, handY, totalVelocity);
                 }
             }
         });
     }
 
-    hitObject(object) {
-        const userData = object.userData;
+    detectPunchCollision(handX, handY, velocity) {
+        // Convert screen coordinates to normalized device coordinates (-1 to +1)
+        const ndcX = (handX / window.innerWidth) * 2 - 1;
+        const ndcY = -(handY / window.innerHeight) * 2 + 1;
         
-        // Update score
-        this.score += userData.points;
+        // Create raycaster from camera through the hand position
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
+        
+        // Check intersection with objects
+        const intersects = raycaster.intersectObjects(this.objects);
+        
+        if (intersects.length > 0) {
+            const object = intersects[0].object;
+            if (!object.userData.hit) {
+                this.hitObject(object, velocity);
+            }
+        } else {
+            // Fallback: check distance-based collision
+            this.checkDistanceCollision(ndcX, ndcY);
+        }
+    }
+
+    checkDistanceCollision(ndcX, ndcY) {
+        // Convert NDC to world position at object distance
+        const vector = new THREE.Vector3(ndcX, ndcY, 0.5);
+        vector.unproject(this.camera);
+        const dir = vector.sub(this.camera.position).normalize();
+        
+        // Check all objects for proximity
+        this.objects.forEach(object => {
+            if (object.userData.hit) return;
+            
+            const distance = this.camera.position.distanceTo(object.position);
+            const punchPos = this.camera.position.clone().add(dir.multiplyScalar(distance));
+            const objectDistance = punchPos.distanceTo(object.position);
+            
+            if (objectDistance < this.punchRange) {
+                this.hitObject(object, 50); // Default velocity for distance hits
+            }
+        });
+    }
+
+    hitObject(object, velocity) {
+        const userData = object.userData;
+        userData.hit = true;
+        
+        // Calculate score with velocity bonus
+        const velocityBonus = Math.min(2.0, velocity / this.punchThreshold);
+        const points = Math.round(userData.points * velocityBonus);
+        this.score += points;
         this.score = Math.max(0, this.score);
         
-        // Create simple particle effect
-        this.createParticleEffect(object.position, userData.type);
+        console.log(`💥 Hit ${userData.type} object! +${points} points (velocity: ${velocity.toFixed(1)})`);
+        
+        // Visual and audio feedback
+        this.createExplosionEffect(object.position, userData.type, velocity);
+        this.createScorePopup(object.position, points);
         
         // Remove object
         this.scene.remove(object);
         this.objects = this.objects.filter(obj => obj !== object);
         
-        console.log('Object hit! Score:', this.score);
+        this.updateUI();
     }
 
-    createParticleEffect(position, type) {
-        const particleCount = 15;
-        const color = type === 'normal' ? 0x00ff88 : 
-                     type === 'bonus' ? 0xffaa00 : 0xff4444;
+    createExplosionEffect(position, type, velocity) {
+        const particleCount = Math.min(50, 20 + velocity / 2);
+        const colors = {
+            normal: [0x00ff88, 0x88ffaa],
+            bonus: [0xffaa00, 0xffdd00],
+            danger: [0xff4444, 0xff8888],
+            explosive: [0xaa00ff, 0xff00ff]
+        };
+        
+        const typeColors = colors[type] || [0xffffff, 0xcccccc];
         
         for (let i = 0; i < particleCount; i++) {
-            const geometry = new THREE.SphereGeometry(0.05, 8, 8);
-            const material = new THREE.MeshBasicMaterial({ color: color });
+            const size = 0.02 + Math.random() * 0.08;
+            const geometry = new THREE.SphereGeometry(size, 8, 8);
+            const material = new THREE.MeshBasicMaterial({ 
+                color: typeColors[Math.floor(Math.random() * typeColors.length)],
+                transparent: true,
+                opacity: 0.8
+            });
             
             const particle = new THREE.Mesh(geometry, material);
             particle.position.copy(position);
             
+            // Enhanced particle physics
+            const speed = 0.1 + (velocity / this.punchThreshold) * 0.2;
+            const angle = Math.random() * Math.PI * 2;
+            const power = Math.random() * speed;
+            
             particle.userData = {
                 velocity: new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.1,
-                    (Math.random() - 0.5) * 0.1,
-                    (Math.random() - 0.5) * 0.1
+                    Math.cos(angle) * power,
+                    Math.sin(angle) * power,
+                    (Math.random() - 0.5) * power
                 ),
-                life: 1.0
+                life: 1.0,
+                decay: 0.02 + Math.random() * 0.03
             };
             
             this.scene.add(particle);
             this.particles.push(particle);
         }
+        
+        // Flash effect
+        this.createFlashEffect(position, typeColors[0]);
+    }
+
+    createFlashEffect(position, color) {
+        const flashGeometry = new THREE.SphereGeometry(1, 16, 16);
+        const flashMaterial = new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: 0.6
+        });
+        
+        const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+        flash.position.copy(position);
+        flash.userData = { life: 1.0 };
+        
+        this.scene.add(flash);
+        this.particles.push(flash);
+    }
+
+    createScorePopup(position, points) {
+        // Create a floating text element (simplified version)
+        console.log(`🎯 +${points} points!`);
+        
+        // You could enhance this with actual 3D text using Three.js TextGeometry
+        // For now, we'll just log to console
     }
 
     updatePhysics() {
-        // Update objects
+        const deltaTime = 1/60; // Assume 60 FPS
+        
+        // Update objects with smooth movement
         this.objects.forEach(object => {
             const userData = object.userData;
-            object.position.add(userData.velocity);
             
-            // Remove objects that are too close
+            // Apply velocity
+            object.position.x += userData.velocity.x * deltaTime;
+            object.position.y += userData.velocity.y * deltaTime;
+            object.position.z += userData.velocity.z * deltaTime;
+            
+            // Apply rotation
+            object.rotation.x += userData.rotationSpeed.x;
+            object.rotation.y += userData.rotationSpeed.y;
+            object.rotation.z += userData.rotationSpeed.z;
+            
+            // Pulsing effect for certain objects
+            if (userData.type === 'bonus' || userData.type === 'explosive') {
+                object.scale.setScalar(1 + Math.sin(Date.now() * 0.005) * 0.2);
+            }
+            
+            // Remove objects that are too close or passed by
             if (object.position.z > 2) {
                 this.scene.remove(object);
                 this.objects = this.objects.filter(obj => obj !== object);
             }
         });
         
-        // Update particles
+        // Update particles with enhanced physics
         this.particles.forEach((particle, index) => {
             const userData = particle.userData;
+            
+            // Apply velocity with air resistance
+            userData.velocity.multiplyScalar(0.98);
             particle.position.add(userData.velocity);
-            userData.life -= 0.03;
+            
+            // Apply gravity to non-flash particles
+            if (particle.geometry.parameters.radius < 0.5) {
+                userData.velocity.y -= 0.01;
+            }
+            
+            // Life decay
+            userData.life -= userData.decay || 0.03;
+            particle.material.opacity = userData.life * 0.8;
             particle.scale.setScalar(userData.life);
             
+            // Remove dead particles
             if (userData.life <= 0) {
                 this.scene.remove(particle);
                 this.particles.splice(index, 1);
@@ -415,6 +600,13 @@ class BoxingGame {
     updateUI() {
         document.getElementById('scoreValue').textContent = this.score;
         document.getElementById('timerValue').textContent = Math.max(0, Math.ceil(this.timeLeft));
+        
+        // Visual feedback for score changes
+        const scoreElement = document.getElementById('scoreValue');
+        scoreElement.style.transform = 'scale(1.2)';
+        setTimeout(() => {
+            scoreElement.style.transform = 'scale(1)';
+        }, 200);
     }
 
     endGame() {
@@ -422,35 +614,64 @@ class BoxingGame {
         document.getElementById('finalScore').textContent = this.score;
         document.getElementById('gameOverScreen').style.display = 'block';
         
-        // Clear objects
+        // Clear all objects and particles
         this.objects.forEach(object => this.scene.remove(object));
         this.objects = [];
         this.particles.forEach(particle => this.scene.remove(particle));
         this.particles = [];
         
-        console.log('Game ended. Final score:', this.score);
+        console.log(`🎮 Game Over! Final Score: ${this.score}`);
+    }
+
+    // Fallback punch simulation for testing
+    simulatePunch() {
+        if (!this.gameActive) return;
+        
+        // Simulate punch at random position
+        const randomX = (Math.random() - 0.5) * 2;
+        const randomY = (Math.random() - 0.5) * 2;
+        this.detectPunchCollision(
+            (randomX + 1) * window.innerWidth / 2,
+            (randomY + 1) * window.innerHeight / 2,
+            50
+        );
     }
 
     showError(message) {
-        document.getElementById('errorText').textContent = message;
-        document.getElementById('errorMessage').style.display = 'block';
-        document.getElementById('startScreen').style.display = 'none';
+        const errorElement = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        
+        if (errorElement && errorText) {
+            errorText.textContent = message;
+            errorElement.style.display = 'block';
+            document.getElementById('startScreen').style.display = 'none';
+        }
+        console.error('❌ ' + message);
     }
 
     showMessage(message) {
-        // You can implement a temporary message display here
-        console.log('Game Message:', message);
+        console.log('💡 ' + message);
+        // You could implement a toast notification here
     }
 }
 
-// Initialize game when page loads
+// Enhanced initialization with error handling
 let game;
-window.addEventListener('load', () => {
-    console.log('Page loaded, initializing game...');
-    game = new BoxingGame();
-    game.init().then(() => {
-        console.log('Game ready!');
-    }).catch(error => {
-        console.error('Game failed to initialize:', error);
-    });
+
+window.addEventListener('load', async () => {
+    console.log('🚀 AR Boxing Game Loading...');
+    
+    try {
+        game = new BoxingGame();
+        await game.init();
+        console.log('🎉 Game ready! Click START to play.');
+    } catch (error) {
+        console.error('💥 Game failed to load:', error);
+        alert('Game failed to load. Please check console for details.');
+    }
 });
+
+// Global function for testing
+window.simulatePunch = () => {
+    if (game) game.simulatePunch();
+};
