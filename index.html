@@ -8,6 +8,7 @@
 </head>
 <body>
     <div id="gameContainer">
+        <!-- Camera feed -->
         <video id="videoElement" autoplay playsinline></video>
         <canvas id="canvas3d"></canvas>
         
@@ -17,19 +18,17 @@
             
             <div id="startScreen" class="start-screen">
                 <h1>🥊 AR BOXING 🥊</h1>
-                <p>Punch the glowing objects with your hands!</p>
-                <p>Make sure your hands are visible to the camera</p>
+                <p>Punch the glowing objects with your REAL hands!</p>
+                <p>Make punching motions in front of your camera</p>
                 <div class="instructions">
                     <h3>🎯 How to Play:</h3>
                     <p>• Make punching motions with your hands</p>
                     <p>• Hit green spheres for +10 points</p>
                     <p>• Hit orange bonus for +50 points</p>
                     <p>• Avoid red danger objects (-20 points)</p>
+                    <p>• Press SPACE to test punches</p>
                 </div>
                 <button id="startButton">START GAME</button>
-                <div id="loadingMessage" style="display: none;">
-                    <p>Loading hand tracking model... This may take a moment.</p>
-                </div>
             </div>
             
             <div id="gameOverScreen" class="game-over" style="display: none;">
@@ -46,13 +45,13 @@
         </div>
     </div>
 
-    <!-- External Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Hand tracking libraries -->
+    <!-- Replace these lines in your index.html -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection@2.0.0/dist/hand-pose-detection.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
-    <!-- Game Script -->
     <script src="javascript.js"></script>
 </body>
 </html>
