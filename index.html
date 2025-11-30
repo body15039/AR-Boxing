@@ -3,122 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web AR Punching Game</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Arial', sans-serif;
-            background: #000;
-            color: white;
-            overflow: hidden;
-        }
-        
-        #gameContainer {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-        }
-        
-        #videoElement {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1);
-        }
-        
-        #canvas3d {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-        
-        #uiOverlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-        
-        .score-display {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            font-size: 2.5em;
-            font-weight: bold;
-            color: #00ff88;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-        }
-        
-        .timer-display {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            font-size: 1.8em;
-            color: #ffaa00;
-        }
-        
-        .game-over {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            background: rgba(0,0,0,0.8);
-            padding: 30px;
-            border-radius: 15px;
-            border: 2px solid #00ff88;
-        }
-        
-        .start-screen {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-            background: rgba(0,0,0,0.9);
-            padding: 40px;
-            border-radius: 20px;
-            border: 3px solid #ffaa00;
-        }
-        
-        button {
-            background: linear-gradient(45deg, #ff6b6b, #ffaa00);
-            border: none;
-            padding: 15px 30px;
-            font-size: 1.2em;
-            color: white;
-            border-radius: 25px;
-            cursor: pointer;
-            margin: 10px;
-            pointer-events: auto;
-            transition: transform 0.2s;
-        }
-        
-        button:hover {
-            transform: scale(1.1);
-        }
-        
-        .hand-points {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            background: #ff0000;
-            border-radius: 50%;
-            pointer-events: none;
-        }
-    </style>
+    <title>AR Boxing Game</title>
+    <link rel="stylesheet" href="css.css">
 </head>
 <body>
     <div id="gameContainer">
@@ -130,10 +16,20 @@
             <div class="timer-display">Time: <span id="timerValue">60</span>s</div>
             
             <div id="startScreen" class="start-screen">
-                <h1>👊 PUNCH ARENA 👊</h1>
+                <h1>🥊 AR BOXING 🥊</h1>
                 <p>Punch the glowing objects with your hands!</p>
                 <p>Make sure your hands are visible to the camera</p>
+                <div class="instructions">
+                    <h3>🎯 How to Play:</h3>
+                    <p>• Make punching motions with your hands</p>
+                    <p>• Hit green spheres for +10 points</p>
+                    <p>• Hit orange bonus for +50 points</p>
+                    <p>• Avoid red danger objects (-20 points)</p>
+                </div>
                 <button id="startButton">START GAME</button>
+                <div id="loadingMessage" style="display: none;">
+                    <p>Loading hand tracking model... This may take a moment.</p>
+                </div>
             </div>
             
             <div id="gameOverScreen" class="game-over" style="display: none;">
@@ -141,13 +37,22 @@
                 <p>Final Score: <span id="finalScore">0</span></p>
                 <button id="restartButton">PLAY AGAIN</button>
             </div>
+
+            <div id="errorMessage" class="error-message" style="display: none;">
+                <h3>⚠️ Error</h3>
+                <p id="errorText"></p>
+                <button onclick="location.reload()">RELOAD PAGE</button>
+            </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <!-- External Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/hand-pose-detection"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
-    <script src="game.js"></script>
+    
+    <!-- Game Script -->
+    <script src="javascript.js"></script>
 </body>
 </html>
